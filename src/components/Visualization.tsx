@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FC } from 'react';
+import { useEffect, useMemo, useRef, useState, type FC, type MutableRefObject } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars, useTexture, Text, Line } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
@@ -18,6 +18,11 @@ interface Props {
 const LINE_LEFT = -10;
 const LINE_RIGHT = 10;
 const PATH_SPAN = LINE_RIGHT - LINE_LEFT;
+
+/** Earth surface-ish start for rulers (avoid z-fight with sphere center). */
+const RULER_X0 = LINE_LEFT + 1.05;
+/** Rest ghost star center at LINE_RIGHT; pull line end slightly inward. */
+const RULER_X1_REST = LINE_RIGHT - 1.2;
 
 const Earth = () => {
   const [day, bump] = useTexture([
@@ -44,22 +49,59 @@ const Earth = () => {
   );
 };
 
-const TargetStar = () => {
-  return (
-    <mesh position={[LINE_RIGHT, 0, 0]}>
-      <sphereGeometry args={[1.2, 64, 64]} />
-      <meshBasicMaterial color={[2, 1.5, 1]} toneMapped={false} />
+/** Rest-frame destination (lab distance): dim “shadow” star. */
+const RestFrameGhostTarget = () => (
+  <group position={[LINE_RIGHT, 0, 0]}>
+    <mesh>
+      <sphereGeometry args={[1.2, 32, 32]} />
+      <meshBasicMaterial color="#334" transparent opacity={0.28} depthWrite={false} />
     </mesh>
-  );
-};
+  </group>
+);
 
-/** Small bloom-friendly “sun” at the end of the contracted-distance bar. */
-const ContractedEndpointSun = () => (
-  <mesh position={[20, 0, 0]}>
-    <sphereGeometry args={[0.35, 24, 24]} />
-    <meshBasicMaterial color={[2.2, 1.4, 0.6]} toneMapped={false} />
+const TravelerTargetStar = () => (
+  <mesh>
+    <sphereGeometry args={[1.2, 64, 64]} />
+    <meshBasicMaterial color={[2, 1.5, 1]} toneMapped={false} />
   </mesh>
 );
+
+/**
+ * Solid orange segment from Earth to traveler star — same span as ship path.
+ * Updated imperatively so we do not spam React state each frame.
+ */
+function TravelerCorridorLine({ liveScaleRef }: { liveScaleRef: MutableRefObject<number> }) {
+  const lineObj = useMemo(() => {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const mat = new THREE.LineBasicMaterial({ color: '#ff9944' });
+    return new THREE.Line(geom, mat);
+  }, []);
+
+  useFrame(() => {
+    const scale = liveScaleRef.current;
+    const span = PATH_SPAN * scale;
+    const x1 = LINE_LEFT + Math.max(span - 1.15, RULER_X0 + 0.15);
+    const geom = lineObj.geometry as THREE.BufferGeometry;
+    const arr = geom.attributes.position.array as Float32Array;
+    arr[0] = RULER_X0;
+    arr[1] = -0.32;
+    arr[2] = 0.04;
+    arr[3] = x1;
+    arr[4] = -0.32;
+    arr[5] = 0.04;
+    geom.attributes.position.needsUpdate = true;
+  });
+
+  useEffect(() => {
+    return () => {
+      lineObj.geometry.dispose();
+      (lineObj.material as THREE.Material).dispose();
+    };
+  }, [lineObj]);
+
+  return <primitive object={lineObj} />;
+}
 
 interface SceneRigProps {
   simulator: SimulatorViewModel;
@@ -75,10 +117,17 @@ function SceneRig({ simulator, visualization }: SceneRigProps) {
   const lorentzFactor = simulator.lorentzFactor;
 
   const shipRef = useRef<THREE.Group>(null);
-  const contractedGroupRef = useRef<THREE.Group>(null);
+  const travelerTargetRef = useRef<THREE.Group>(null);
+  const pointLightRef = useRef<THREE.PointLight>(null);
+  const liveScaleRef = useRef(peakContractedScale);
   const progressRef = useRef(0);
   const lastResetGenRef = useRef(resetGen);
   const journeyKeyRef = useRef('');
+
+  const [hudContractedLy, setHudContractedLy] = useState(
+    () => distanceLy * peakContractedScale
+  );
+  const hudFrameCounter = useRef(0);
 
   const journeyKey = `${journey.earthTime}|${journey.shipTime}|${journey.peakVelocity}|${distanceLy}|${journey.phases.accel.distance}|${journey.phases.coast?.distance ?? 0}|${journey.phases.decel.distance}`;
 
@@ -94,10 +143,13 @@ function SceneRig({ simulator, visualization }: SceneRigProps) {
       journeyKeyRef.current = journeyKey;
       progressRef.current = 0;
     }
-    if (contractedGroupRef.current) {
-      contractedGroupRef.current.scale.x = peakContractedScale;
+    const peak = peakContractedScale;
+    liveScaleRef.current = peak;
+    setHudContractedLy(distanceLy * peak);
+    if (travelerTargetRef.current) {
+      travelerTargetRef.current.position.set(LINE_LEFT + PATH_SPAN * peak, 0, 0);
     }
-  }, [journeyKey, peakContractedScale, resetGen]);
+  }, [journeyKey, peakContractedScale, resetGen, distanceLy]);
 
   useFrame((_state, delta) => {
     if (isPlaying) {
@@ -108,58 +160,75 @@ function SceneRig({ simulator, visualization }: SceneRigProps) {
     }
 
     const { pathFraction, velocityC } = getTripStateAtProgress(journey, distanceLy, progressRef.current);
-    const x = LINE_LEFT + pathFraction * PATH_SPAN;
-    if (shipRef.current) {
-      shipRef.current.position.set(x, 0, 0);
-    }
 
-    const targetScale = isPlaying
+    const targetScaleDesired = isPlaying
       ? contractedScaleAtVelocity(velocityC, lorentzFactor)
       : peakContractedScale;
 
-    if (contractedGroupRef.current) {
-      contractedGroupRef.current.scale.x = THREE.MathUtils.lerp(
-        contractedGroupRef.current.scale.x,
-        targetScale,
-        0.15
-      );
+    const liveScale = THREE.MathUtils.lerp(liveScaleRef.current, targetScaleDesired, 0.15);
+    liveScaleRef.current = liveScale;
+
+    const travelerSpan = PATH_SPAN * liveScale;
+    const targetCenterX = LINE_LEFT + travelerSpan;
+    if (travelerTargetRef.current) {
+      travelerTargetRef.current.position.set(targetCenterX, 0, 0);
+    }
+    if (pointLightRef.current) {
+      pointLightRef.current.position.set(targetCenterX, 0.5, 0);
+    }
+    if (shipRef.current) {
+      shipRef.current.position.set(LINE_LEFT + pathFraction * travelerSpan, 0, 0);
+    }
+
+    hudFrameCounter.current += 1;
+    if (hudFrameCounter.current % 12 === 0) {
+      setHudContractedLy(distanceLy * liveScale);
     }
   });
 
-  const contractedLyDisplay = distanceLy * peakContractedScale;
+  const peakLy = distanceLy * peakContractedScale;
 
   return (
     <>
       <Earth />
-      <TargetStar />
+      <RestFrameGhostTarget />
 
-      <group position={[0, -2, 0]}>
-        <Line
-          points={[
-            [LINE_LEFT, 0, 0],
-            [LINE_RIGHT, 0, 0],
-          ]}
-          color="#7eb8ff"
-          lineWidth={2}
-          dashed
-          dashScale={2}
-          dashSize={0.45}
-          gapSize={0.35}
-        />
-        <Text position={[0, 0.55, 0]} fontSize={0.45} color="#7eb8ff" anchorY="bottom">
-          Rest frame: {distanceLy.toLocaleString()} ly
-        </Text>
-
-        <group position={[LINE_LEFT, -1.1, 0]}>
-          <group ref={contractedGroupRef} scale={[peakContractedScale, 1, 1]}>
-            <Line points={[[0, 0, 0], [20, 0, 0]]} color="#ffaa44" lineWidth={4} />
-            <ContractedEndpointSun />
-          </group>
-          <Text position={[10, -0.55, 0]} fontSize={0.45} color="#ffaa44" anchorY="top">
-            Contracted (at speed): {contractedLyDisplay.toPrecision(3)} ly
-          </Text>
-        </group>
+      <group ref={travelerTargetRef} position={[LINE_LEFT + PATH_SPAN * peakContractedScale, 0, 0]}>
+        <TravelerTargetStar />
       </group>
+
+      <pointLight
+        ref={pointLightRef}
+        position={[LINE_RIGHT, 0.5, 0]}
+        intensity={5}
+        color="#ffccaa"
+        distance={80}
+      />
+
+      {/* One dashed rest ruler: Earth to shadow destination (full lab distance). */}
+      <Line
+        points={[
+          [RULER_X0, -0.52, 0.02],
+          [RULER_X1_REST, -0.52, 0.02],
+        ]}
+        color="#7eb8ff"
+        lineWidth={2}
+        dashed
+        dashScale={2}
+        dashSize={0.45}
+        gapSize={0.35}
+      />
+
+      {/* One solid traveler ruler: Earth to hi-fi star (length-contracted span). */}
+      <TravelerCorridorLine liveScaleRef={liveScaleRef} />
+
+      <Text position={[0, 3.9, 0]} fontSize={0.36} color="#94a3b8" anchorY="bottom" maxWidth={32}>
+        Orange line: traveler distance to the bright star. Blue dashed: rest distance to the faint star.
+      </Text>
+      <Text position={[0, 3.45, 0]} fontSize={0.34} color="#cbd5e1" anchorY="bottom">
+        Contracted: {hudContractedLy.toPrecision(3)} ly
+        {!isPlaying ? ` (peak ${peakLy.toPrecision(3)} ly)` : ''} — Rest: {distanceLy.toLocaleString()} ly
+      </Text>
 
       <group ref={shipRef} position={[LINE_LEFT, 0, 0]}>
         <mesh rotation={[0, 0, -Math.PI / 2]}>
@@ -179,14 +248,13 @@ export const Visualization: FC<Props> = ({ visualization, simulator }) => {
   return (
     <div className="w-full h-full bg-black relative rounded-lg overflow-hidden border border-slate-700">
       <Canvas
-        camera={{ position: [0, 7, 38], fov: 40, near: 0.1, far: 200 }}
+        camera={{ position: [0, 6, 38], fov: 40, near: 0.1, far: 200 }}
         gl={{ antialias: true }}
       >
         <color attach="background" args={['#050510']} />
 
         <ambientLight intensity={0.2} />
         <directionalLight position={[-5, 8, 8]} intensity={2} />
-        <pointLight position={[LINE_RIGHT, 0, 0]} intensity={5} color="#ffccaa" distance={80} />
 
         <SceneRig simulator={simulator} visualization={visualization} />
 
@@ -194,7 +262,7 @@ export const Visualization: FC<Props> = ({ visualization, simulator }) => {
 
         <OrbitControls
           makeDefault
-          target={[0, -0.5, 0]}
+          target={[0, 0.2, 0]}
           enablePan
           enableZoom
           enableRotate
