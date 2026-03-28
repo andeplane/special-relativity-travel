@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useVisualizationViewModel } from './useVisualizationViewModel';
-import { JourneyResult } from '../types/physics';
+import type { JourneyResult } from '../types/physics';
 
 const mockJourneyResult: JourneyResult = {
   earthTime: 10,

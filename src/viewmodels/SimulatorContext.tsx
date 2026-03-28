@@ -1,5 +1,6 @@
-import React, { createContext, ReactNode } from 'react';
-import { PhysicsService, PresetService } from '../types/physics';
+import { createContext } from 'react';
+import type { ReactNode } from 'react';
+import type { PhysicsService, PresetService } from '../types/physics';
 import { DefaultPhysicsService, DefaultPresetService } from '../services/PhysicsService';
 
 export interface SimulatorContextType {

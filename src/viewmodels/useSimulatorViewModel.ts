@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo, useCallback } from 'react';
 import { SimulatorContext } from './SimulatorContext';
-import { JourneyResult, FuelResult, Preset } from '../types/physics';
+import type { JourneyResult, FuelResult, Preset } from '../types/physics';
 
 export interface SimulatorViewModel {
   // Inputs

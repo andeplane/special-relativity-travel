@@ -1,6 +1,6 @@
 import React from 'react';
-import { SimulatorViewModel } from '../viewmodels/useSimulatorViewModel';
-import { VisualizationViewModel } from '../viewmodels/useVisualizationViewModel';
+import type { SimulatorViewModel } from '../viewmodels/useSimulatorViewModel';
+import type { VisualizationViewModel } from '../viewmodels/useVisualizationViewModel';
 import { Play, Square } from 'lucide-react';
 
 interface ControlsPanelProps {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { SimulatorViewModel } from '../viewmodels/useSimulatorViewModel';
+import type { SimulatorViewModel } from '../viewmodels/useSimulatorViewModel';
 
 interface ResultsPanelProps {
   simulator: SimulatorViewModel;

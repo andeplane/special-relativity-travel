@@ -1,8 +1,9 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { useSimulatorViewModel } from './useSimulatorViewModel';
-import { SimulatorProvider, SimulatorContextType } from './SimulatorContext';
-import { ReactNode } from 'react';
+import type { SimulatorContextType } from './SimulatorContext';
+import { SimulatorProvider } from './SimulatorContext';
+import type { ReactNode } from 'react';
 
 describe('useSimulatorViewModel', () => {
   it('initializes with default values', () => {

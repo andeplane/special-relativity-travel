@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { JourneyResult } from '../types/physics';
+import type { JourneyResult } from '../types/physics';
 
 export interface VisualizationViewModel {
   isPlaying: boolean;

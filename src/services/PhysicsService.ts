@@ -1,4 +1,4 @@
-import { FuelResult, JourneyResult, PhysicsService, Preset, PresetService } from '../types/physics';
+import type { FuelResult, JourneyResult, PhysicsService, Preset, PresetService } from '../types/physics';
 
 const C_M_S = 299792458;
 const G_M_S2 = 9.80665;
