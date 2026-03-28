@@ -16,6 +16,11 @@ describe('PhysicsService', () => {
     it('approaches infinity as v approaches c', () => {
       expect(physicsService.lorentzFactor(0.9999)).toBeGreaterThan(70);
     });
+
+    it('returns infinity for v >= c', () => {
+      expect(physicsService.lorentzFactor(1)).toBe(Infinity);
+      expect(physicsService.lorentzFactor(1.1)).toBe(Infinity);
+    });
   });
 
   describe('contractedDistance', () => {
@@ -26,11 +31,18 @@ describe('PhysicsService', () => {
   });
 
   describe('fuelRequirements', () => {
-    it('calculates fuel requirements correctly', () => {
+    it('calculates fuel requirements correctly for relativistic speeds', () => {
       // deltaV = 0.9c
       const result = physicsService.fuelRequirements(0.9, 1000); // 1 tonne payload
       expect(result.antimatterMass).toBeGreaterThan(0);
-      expect(result.chemicalMass).toBeGreaterThan(result.antimatterMass);
+      expect(result.chemicalMass).toBe(Infinity);
+    });
+
+    it('calculates chemical mass correctly for low speeds', () => {
+      // deltaV = 0.001c (approx 300 km/s)
+      const result = physicsService.fuelRequirements(0.001, 1000);
+      expect(result.chemicalMass).toBeGreaterThan(0);
+      expect(result.chemicalMass).toBeLessThan(Infinity);
     });
   });
 
