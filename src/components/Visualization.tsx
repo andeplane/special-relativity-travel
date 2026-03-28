@@ -1,22 +1,30 @@
-import React, { useRef } from 'react';
+import { useEffect, useRef, type FC } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars, useTexture, Text, Line } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import type { VisualizationViewModel } from '../viewmodels/useVisualizationViewModel';
 import type { SimulatorViewModel } from '../viewmodels/useSimulatorViewModel';
+import {
+  getTripStateAtProgress,
+  contractedScaleAtVelocity,
+} from '../services/journeyAnimation';
 
 interface Props {
   visualization: VisualizationViewModel;
   simulator: SimulatorViewModel;
 }
 
+const LINE_LEFT = -10;
+const LINE_RIGHT = 10;
+const PATH_SPAN = LINE_RIGHT - LINE_LEFT;
+
 const Earth = () => {
   const [day, bump] = useTexture([
     '/textures/planets/earth_day_4096.jpg',
-    '/textures/planets/earth_bump_roughness_clouds_4096.jpg'
+    '/textures/planets/earth_bump_roughness_clouds_4096.jpg',
   ]);
-  
+
   const earthRef = useRef<THREE.Mesh>(null);
   useFrame(() => {
     if (earthRef.current) {
@@ -25,158 +33,174 @@ const Earth = () => {
   });
 
   return (
-    <mesh ref={earthRef} position={[-10, 0, 0]}>
+    <mesh ref={earthRef} position={[LINE_LEFT, 0, 0]}>
       <sphereGeometry args={[1, 64, 64]} />
-      <meshStandardMaterial 
-        map={day} 
-        bumpMap={bump}
-        bumpScale={0.05}
-        roughness={0.8}
-      />
-      {/* Atmosphere glow proxy */}
+      <meshStandardMaterial map={day} bumpMap={bump} bumpScale={0.05} roughness={0.8} />
       <mesh>
         <sphereGeometry args={[1.05, 32, 32]} />
         <meshBasicMaterial color="#4db2ff" transparent opacity={0.15} blending={THREE.AdditiveBlending} />
       </mesh>
     </mesh>
   );
-}
+};
 
 const TargetStar = () => {
   return (
-    <mesh position={[10, 0, 0]}>
+    <mesh position={[LINE_RIGHT, 0, 0]}>
       <sphereGeometry args={[1.2, 64, 64]} />
-      {/* High color values for Bloom to pick up (toneMapped=false is default in R3F for raw values) */}
       <meshBasicMaterial color={[2, 1.5, 1]} toneMapped={false} />
     </mesh>
   );
+};
+
+/** Small bloom-friendly “sun” at the end of the contracted-distance bar. */
+const ContractedEndpointSun = () => (
+  <mesh position={[20, 0, 0]}>
+    <sphereGeometry args={[0.35, 24, 24]} />
+    <meshBasicMaterial color={[2.2, 1.4, 0.6]} toneMapped={false} />
+  </mesh>
+);
+
+interface SceneRigProps {
+  simulator: SimulatorViewModel;
+  visualization: VisualizationViewModel;
 }
 
-const Spaceship = ({ 
-  isPlaying, 
-  animationProgress, 
-  setAnimationProgress 
-}: { 
-  isPlaying: boolean; 
-  animationProgress: number; 
-  setAnimationProgress: (p: number) => void; 
-}) => {
+function SceneRig({ simulator, visualization }: SceneRigProps) {
+  const journey = simulator.journeyResult;
+  const distanceLy = simulator.distanceLy;
+  const peakContractedScale = visualization.contractedDistanceScale;
+  const isPlaying = visualization.isPlaying;
+  const resetGen = visualization.playbackResetGeneration;
+  const lorentzFactor = simulator.lorentzFactor;
+
   const shipRef = useRef<THREE.Group>(null);
-  
+  const contractedGroupRef = useRef<THREE.Group>(null);
+  const progressRef = useRef(0);
+  const lastResetGenRef = useRef(resetGen);
+  const journeyKeyRef = useRef('');
+
+  const journeyKey = `${journey.earthTime}|${journey.shipTime}|${journey.peakVelocity}|${distanceLy}|${journey.phases.accel.distance}|${journey.phases.coast?.distance ?? 0}|${journey.phases.decel.distance}`;
+
+  useEffect(() => {
+    if (resetGen !== lastResetGenRef.current) {
+      lastResetGenRef.current = resetGen;
+      progressRef.current = 0;
+    }
+  }, [resetGen]);
+
+  useEffect(() => {
+    if (journeyKeyRef.current !== journeyKey) {
+      journeyKeyRef.current = journeyKey;
+      progressRef.current = 0;
+    }
+    if (contractedGroupRef.current) {
+      contractedGroupRef.current.scale.x = peakContractedScale;
+    }
+  }, [journeyKey, peakContractedScale, resetGen]);
+
   useFrame((_state, delta) => {
     if (isPlaying) {
-      let nextProgress = animationProgress + delta * 0.2; // 5 seconds for full trip
-      if (nextProgress >= 1) {
-        nextProgress = 0; // loop
+      progressRef.current += delta * 0.055;
+      if (progressRef.current >= 1) {
+        progressRef.current -= 1;
       }
-      setAnimationProgress(nextProgress);
     }
-    
+
+    const { pathFraction, velocityC } = getTripStateAtProgress(journey, distanceLy, progressRef.current);
+    const x = LINE_LEFT + pathFraction * PATH_SPAN;
     if (shipRef.current) {
-      // Map progress 0..1 to x: -9..9
-      const x = -9 + animationProgress * 18;
       shipRef.current.position.set(x, 0, 0);
     }
-  });
 
-  return (
-    <group ref={shipRef}>
-      <mesh rotation={[0, 0, -Math.PI / 2]}>
-        <coneGeometry args={[0.2, 0.6, 8]} />
-        <meshStandardMaterial color="#eeeeee" metalness={0.5} roughness={0.2} />
-      </mesh>
-      <mesh position={[-0.3, 0, 0]}>
-        <sphereGeometry args={[0.1, 16, 16]} />
-        <meshBasicMaterial color={[1, 0.5, 2]} toneMapped={false} />
-      </mesh>
-    </group>
-  );
-}
+    const targetScale = isPlaying
+      ? contractedScaleAtVelocity(velocityC, lorentzFactor)
+      : peakContractedScale;
 
-const DistanceBars = ({ 
-  distanceLy, 
-  contractedScale 
-}: { 
-  distanceLy: number; 
-  contractedScale: number; 
-}) => {
-  // Use springs or direct lerp for smooth scaling
-  const contractedGroupRef = useRef<THREE.Group>(null);
-  
-  useFrame(() => {
     if (contractedGroupRef.current) {
-      // Lerp the scale of the contracted bar
       contractedGroupRef.current.scale.x = THREE.MathUtils.lerp(
         contractedGroupRef.current.scale.x,
-        contractedScale,
-        0.1
+        targetScale,
+        0.15
       );
     }
   });
 
-  return (
-    <group position={[0, -2, 0]}>
-      {/* Rest frame bar */}
-      <Line 
-        points={[[-10, 0, 0], [10, 0, 0]]} 
-        color="#4db2ff" 
-        lineWidth={2} 
-        dashed={false} 
-      />
-      <Text position={[0, 0.5, 0]} fontSize={0.5} color="#4db2ff" anchorY="bottom">
-        Rest Frame: {distanceLy.toLocaleString()} ly
-      </Text>
+  const contractedLyDisplay = distanceLy * peakContractedScale;
 
-      {/* Contracted frame bar */}
-      <group position={[-10, -1, 0]}>
-        <group ref={contractedGroupRef}>
-          <Line 
-            points={[[0, 0, 0], [20, 0, 0]]} 
-            color="#ffaa00" 
-            lineWidth={4} 
-          />
-        </group>
-        <Text position={[10, -0.5, 0]} fontSize={0.5} color="#ffaa00" anchorY="top">
-          Contracted: {(distanceLy * contractedScale).toPrecision(3)} ly
+  return (
+    <>
+      <Earth />
+      <TargetStar />
+
+      <group position={[0, -2, 0]}>
+        <Line
+          points={[
+            [LINE_LEFT, 0, 0],
+            [LINE_RIGHT, 0, 0],
+          ]}
+          color="#7eb8ff"
+          lineWidth={2}
+          dashed
+          dashScale={2}
+          dashSize={0.45}
+          gapSize={0.35}
+        />
+        <Text position={[0, 0.55, 0]} fontSize={0.45} color="#7eb8ff" anchorY="bottom">
+          Rest frame: {distanceLy.toLocaleString()} ly
         </Text>
+
+        <group position={[LINE_LEFT, -1.1, 0]}>
+          <group ref={contractedGroupRef} scale={[peakContractedScale, 1, 1]}>
+            <Line points={[[0, 0, 0], [20, 0, 0]]} color="#ffaa44" lineWidth={4} />
+            <ContractedEndpointSun />
+          </group>
+          <Text position={[10, -0.55, 0]} fontSize={0.45} color="#ffaa44" anchorY="top">
+            Contracted (at speed): {contractedLyDisplay.toPrecision(3)} ly
+          </Text>
+        </group>
       </group>
-    </group>
+
+      <group ref={shipRef} position={[LINE_LEFT, 0, 0]}>
+        <mesh rotation={[0, 0, -Math.PI / 2]}>
+          <coneGeometry args={[0.2, 0.6, 8]} />
+          <meshStandardMaterial color="#eeeeee" metalness={0.5} roughness={0.2} />
+        </mesh>
+        <mesh position={[-0.3, 0, 0]}>
+          <sphereGeometry args={[0.1, 16, 16]} />
+          <meshBasicMaterial color={[1, 0.5, 2]} toneMapped={false} />
+        </mesh>
+      </group>
+    </>
   );
 }
 
-export const Visualization: React.FC<Props> = ({ visualization, simulator }) => {
+export const Visualization: FC<Props> = ({ visualization, simulator }) => {
   return (
     <div className="w-full h-full bg-black relative rounded-lg overflow-hidden border border-slate-700">
-      <Canvas camera={{ position: [0, 0, 15], fov: 45 }}>
+      <Canvas
+        camera={{ position: [0, 7, 38], fov: 40, near: 0.1, far: 200 }}
+        gl={{ antialias: true }}
+      >
         <color attach="background" args={['#050510']} />
-        
+
         <ambientLight intensity={0.2} />
-        <directionalLight position={[-5, 5, 5]} intensity={2} />
-        <pointLight position={[10, 0, 0]} intensity={5} color="#ffccaa" distance={50} />
+        <directionalLight position={[-5, 8, 8]} intensity={2} />
+        <pointLight position={[LINE_RIGHT, 0, 0]} intensity={5} color="#ffccaa" distance={80} />
 
-        <Earth />
-        <TargetStar />
-        
-        <DistanceBars 
-          distanceLy={simulator.distanceLy} 
-          contractedScale={visualization.contractedDistanceScale} 
-        />
-        
-        <Spaceship 
-          isPlaying={visualization.isPlaying}
-          animationProgress={visualization.animationProgress}
-          setAnimationProgress={visualization.setAnimationProgress}
-        />
+        <SceneRig simulator={simulator} visualization={visualization} />
 
-        {/* 500+ particles starfield as per PRD */}
         <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-        
-        <OrbitControls 
-          enablePan={true} 
-          enableZoom={true} 
-          enableRotate={true}
-          maxDistance={50}
-          minDistance={2}
+
+        <OrbitControls
+          makeDefault
+          target={[0, -0.5, 0]}
+          enablePan
+          enableZoom
+          enableRotate
+          minDistance={18}
+          maxDistance={95}
+          maxPolarAngle={Math.PI * 0.55}
         />
 
         <EffectComposer>
