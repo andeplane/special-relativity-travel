@@ -18,6 +18,8 @@ export interface SimulatorViewModel {
   journeyResult: JourneyResult;
   fuelResult: FuelResult;
   presets: Preset[];
+  /** For visualization: same Lorentz factor as physics engine (no duplicated SR math). */
+  lorentzFactor: (velocityC: number) => number;
 }
 
 export function useSimulatorViewModel(): SimulatorViewModel {
@@ -43,6 +45,11 @@ export function useSimulatorViewModel(): SimulatorViewModel {
 
   const presets = useMemo(() => presetService.getPresets(), [presetService]);
 
+  const lorentzFactor = useCallback(
+    (velocityC: number) => physicsService.lorentzFactor(velocityC),
+    [physicsService]
+  );
+
   return {
     distanceLy,
     maxSpeedC,
@@ -54,5 +61,6 @@ export function useSimulatorViewModel(): SimulatorViewModel {
     journeyResult,
     fuelResult,
     presets,
+    lorentzFactor,
   };
 }

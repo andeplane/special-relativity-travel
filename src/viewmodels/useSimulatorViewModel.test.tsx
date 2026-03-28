@@ -55,7 +55,7 @@ describe('useSimulatorViewModel', () => {
     const mockPhysicsService = {
       calculateJourney: mockCalculateJourney,
       fuelRequirements: mockFuelRequirements,
-      lorentzFactor: vi.fn(),
+      lorentzFactor: vi.fn((v: number) => 1 / Math.sqrt(1 - v * v)),
       contractedDistance: vi.fn(),
     };
 
@@ -74,5 +74,7 @@ describe('useSimulatorViewModel', () => {
     
     expect(result.current.journeyResult.earthTime).toBe(10);
     expect(result.current.fuelResult.antimatterMass).toBe(100);
+    expect(result.current.lorentzFactor(0)).toBe(1);
+    expect(mockPhysicsService.lorentzFactor).toHaveBeenCalledWith(0);
   });
 });

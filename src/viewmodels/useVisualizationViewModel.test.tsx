@@ -26,6 +26,14 @@ describe('useVisualizationViewModel', () => {
     expect(result.current.contractedDistanceScale).toBeCloseTo(0.5);
   });
 
+  it('handles zero or negative distance correctly', () => {
+    const { result } = renderHook(() => 
+      useVisualizationViewModel(mockJourneyResult, 0)
+    );
+    
+    expect(result.current.contractedDistanceScale).toBe(1);
+  });
+
   it('handles play/pause state', () => {
     const { result } = renderHook(() => 
       useVisualizationViewModel(mockJourneyResult, 4.24)
@@ -45,5 +53,11 @@ describe('useVisualizationViewModel', () => {
 
     expect(result.current.isPlaying).toBe(false);
     expect(result.current.animationProgress).toBe(0);
+    expect(result.current.playbackResetGeneration).toBe(1);
+
+    act(() => {
+      result.current.resetAnimation();
+    });
+    expect(result.current.playbackResetGeneration).toBe(2);
   });
 });
