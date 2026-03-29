@@ -1,9 +1,11 @@
+import { useState, useCallback } from 'react';
 import { SimulatorProvider } from './viewmodels/SimulatorContext';
 import { useSimulatorViewModel } from './viewmodels/useSimulatorViewModel';
 import { useVisualizationViewModel } from './viewmodels/useVisualizationViewModel';
 import { ControlsPanel } from './components/ControlsPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import { Visualization } from './components/Visualization';
+import { SplashScreen, SPLASH_DISMISSED_KEY } from './components/SplashScreen';
 import { Rocket } from 'lucide-react';
 
 const AppContent = () => {
@@ -38,9 +40,21 @@ const AppContent = () => {
   );
 };
 
+function readSplashDismissed(): boolean {
+  try {
+    return localStorage.getItem(SPLASH_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function App() {
+  const [splashOpen, setSplashOpen] = useState(() => !readSplashDismissed());
+  const closeSplash = useCallback(() => setSplashOpen(false), []);
+
   return (
     <SimulatorProvider>
+      {splashOpen ? <SplashScreen onDismiss={closeSplash} /> : null}
       <AppContent />
     </SimulatorProvider>
   );

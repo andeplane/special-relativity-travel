@@ -1,8 +1,41 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
+import { SPLASH_DISMISSED_KEY } from './components/SplashScreen';
 
 describe('App Integration', () => {
+  beforeEach(() => {
+    localStorage.setItem(SPLASH_DISMISSED_KEY, '1');
+  });
+
+  afterEach(() => {
+    localStorage.removeItem(SPLASH_DISMISSED_KEY);
+  });
+
+  it('shows splash until Enter simulator is clicked', async () => {
+    localStorage.removeItem(SPLASH_DISMISSED_KEY);
+    class MockResizeObserver {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    window.ResizeObserver = MockResizeObserver;
+
+    render(<App />);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(
+      screen.getByText(/special relativity/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /enter simulator/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(localStorage.getItem(SPLASH_DISMISSED_KEY)).toBe('1');
+  });
+
   it('renders the app and calculates results correctly', async () => {
     // Need to mock ResizeObserver for Three.js canvas in JSDOM
     class MockResizeObserver {
