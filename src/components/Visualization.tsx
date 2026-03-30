@@ -83,14 +83,15 @@ function TravelerCorridorLine({ liveScaleRef }: { liveScaleRef: MutableRefObject
     const span = PATH_SPAN * scale;
     const x1 = LINE_LEFT + Math.max(span - 1.15, RULER_X0 + 0.15);
     const geom = lineObj.geometry as THREE.BufferGeometry;
-    // eslint-disable-next-line react-hooks/immutability -- intentional Three.js buffer mutation
     const arr = geom.attributes.position.array as Float32Array;
+    /* eslint-disable react-hooks/immutability -- intentional Three.js buffer mutation in useFrame */
     arr[0] = RULER_X0;
     arr[1] = -0.32;
     arr[2] = 0.04;
     arr[3] = x1;
     arr[4] = -0.32;
     arr[5] = 0.04;
+    /* eslint-enable react-hooks/immutability */
     geom.attributes.position.needsUpdate = true;
   });
 
