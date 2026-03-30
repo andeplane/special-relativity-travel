@@ -25,9 +25,10 @@ const RULER_X0 = LINE_LEFT + 1.05;
 const RULER_X1_REST = LINE_RIGHT - 1.2;
 
 const Earth = () => {
+  const base = import.meta.env.BASE_URL;
   const [day, bump] = useTexture([
-    '/textures/planets/earth_day_4096.jpg',
-    '/textures/planets/earth_bump_roughness_clouds_4096.jpg',
+    `${base}textures/planets/earth_day_4096.jpg`,
+    `${base}textures/planets/earth_bump_roughness_clouds_4096.jpg`,
   ]);
 
   const earthRef = useRef<THREE.Mesh>(null);
