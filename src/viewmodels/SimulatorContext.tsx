@@ -8,11 +8,13 @@ export interface SimulatorContextType {
   presetService: PresetService;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const defaultSimulatorContext: SimulatorContextType = {
   physicsService: new DefaultPhysicsService(),
   presetService: new DefaultPresetService(),
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const SimulatorContext = createContext<SimulatorContextType>(defaultSimulatorContext);
 
 export const SimulatorProvider = ({ 

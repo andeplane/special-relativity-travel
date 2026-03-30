@@ -25,3 +25,6 @@ dist-ssr
 
 # Test coverage
 coverage
+
+# Local three.js clone (not part of this project)
+three.js
