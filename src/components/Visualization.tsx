@@ -83,6 +83,7 @@ function TravelerCorridorLine({ liveScaleRef }: { liveScaleRef: MutableRefObject
     const span = PATH_SPAN * scale;
     const x1 = LINE_LEFT + Math.max(span - 1.15, RULER_X0 + 0.15);
     const geom = lineObj.geometry as THREE.BufferGeometry;
+    // eslint-disable-next-line react-hooks/immutability -- intentional Three.js buffer mutation
     const arr = geom.attributes.position.array as Float32Array;
     arr[0] = RULER_X0;
     arr[1] = -0.32;
@@ -145,6 +146,7 @@ function SceneRig({ simulator, visualization }: SceneRigProps) {
     }
     const peak = peakContractedScale;
     liveScaleRef.current = peak;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync needed to seed HUD before first frame
     setHudContractedLy(distanceLy * peak);
     if (travelerTargetRef.current) {
       travelerTargetRef.current.position.set(LINE_LEFT + PATH_SPAN * peak, 0, 0);
